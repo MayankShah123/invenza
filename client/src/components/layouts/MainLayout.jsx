@@ -1,16 +1,13 @@
 import { Outlet } from 'react-router-dom';
-import Navbar from './Navbar.jsx'; // We'll create this next
+import Navbar from './Navbar.jsx';
 
-const MainLayout = () => {
+export default function MainLayout() {
   return (
-    <div className="flex flex-col min-h-screen">
+    <div className="flex min-h-screen bg-background text-foreground transition-colors duration-300">
       <Navbar />
-      <div className="flex-1 container mx-auto p-4 md:p-6">
-        {/* This renders the specific page component (e.g., Dashboard) */}
-        <Outlet /> 
-      </div>
+      <main className="flex-1 p-6 md:p-8 animate-fade-in overflow-y-auto">
+        <Outlet />
+      </main>
     </div>
   );
-};
-
-export default MainLayout;
+}

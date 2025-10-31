@@ -1,51 +1,50 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { motion } from 'framer-motion';
+import { Plus, Trash2, FileText, Loader2 } from 'lucide-react';
 import Button from '@/components/ui/Button';
-import Input from '@/components/ui/Input';
+import { Input } from "@/components/ui/input";
 import api from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 
 function InvoiceForm() {
-  const { id } = useParams(); // Check if we are editing
+  const { id } = useParams();
   const navigate = useNavigate();
   const isEditing = !!id;
 
   const [customers, setCustomers] = useState([]);
   const [products, setProducts] = useState([]);
-  
   const [selectedCustomer, setSelectedCustomer] = useState('');
   const [items, setItems] = useState([{ productId: '', quantity: 1, price: 0 }]);
   const [status, setStatus] = useState('Pending');
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
-  // Fetch initial data (customers, products, and existing invoice if editing)
   useEffect(() => {
     const fetchData = async () => {
       try {
-        setLoading(true);
-        // Fetch customers and products in parallel
         const [customerRes, productRes] = await Promise.all([
           api.get('/customers'),
-          api.get('/products')
+          api.get('/products'),
         ]);
         setCustomers(customerRes.data);
         setProducts(productRes.data);
 
         if (isEditing) {
-          // If editing, fetch the specific invoice
           const invoiceRes = await api.get(`/invoices/${id}`);
           const invoice = invoiceRes.data;
           setSelectedCustomer(invoice.customer._id);
           setStatus(invoice.status);
-          // Format items for the form
-          setItems(invoice.items.map(item => ({
-            productId: item.product._id,
-            quantity: item.quantity,
-            price: item.price,
-          })));
+          setItems(
+            invoice.items.map(item => ({
+              productId: item.product._id,
+              quantity: item.quantity,
+              price: item.price,
+            }))
+          );
         }
       } catch (err) {
-        console.error("Failed to load invoice form data", err);
+        console.error('Failed to load invoice form data', err);
       } finally {
         setLoading(false);
       }
@@ -54,83 +53,109 @@ function InvoiceForm() {
   }, [id, isEditing]);
 
   const handleItemChange = (index, field, value) => {
-    const newItems = [...items];
-    newItems[index][field] = value;
-
-    // If product changes, update the price
+    const updated = [...items];
+    updated[index][field] = value;
     if (field === 'productId') {
       const product = products.find(p => p._id === value);
-      newItems[index].price = product ? product.price : 0;
+      updated[index].price = product ? product.price : 0;
     }
-    setItems(newItems);
+    setItems(updated);
   };
 
-  const addItem = () => {
-    setItems([...items, { productId: '', quantity: 1, price: 0 }]);
-  };
+  const addItem = () => setItems([...items, { productId: '', quantity: 1, price: 0 }]);
+  const removeItem = index => setItems(items.filter((_, i) => i !== index));
 
-  const removeItem = (index) => {
-    setItems(items.filter((_, i) => i !== index));
-  };
+  const calculateTotal = () =>
+    items.reduce((total, item) => total + item.quantity * item.price, 0);
 
-  const calculateTotal = () => {
-    return items.reduce((total, item) => total + (item.quantity * item.price), 0);
-  };
-
-  const handleSubmit = async (e) => {
+  const handleSubmit = async e => {
     e.preventDefault();
+    setSaving(true);
     const invoiceData = {
       customer: selectedCustomer,
-      items: items.map(item => ({ ...item, productId: item.productId })), // Ensure correct format
+      items: items.map(item => ({ ...item, productId: item.productId })),
       status,
-      // totalAmount is calculated on the backend, but we can send it
       totalAmount: calculateTotal(),
     };
 
     try {
       if (isEditing) {
-        // We are only allowing status updates for simplicity, as per backend controller
         await api.put(`/invoices/${id}`, { status });
       } else {
         await api.post('/invoices', invoiceData);
       }
       navigate('/invoices');
     } catch (err) {
-      console.error("Failed to save invoice", err);
+      console.error('Failed to save invoice', err);
+    } finally {
+      setSaving(false);
     }
   };
-  
-  if (loading) return <div>Loading form...</div>;
+
+  if (loading)
+    return (
+      <div className="flex justify-center items-center h-64 text-gray-600 dark:text-gray-300">
+        <Loader2 className="animate-spin mr-2" /> Loading invoice form...
+      </div>
+    );
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
-      <h1 className="text-3xl font-bold">{isEditing ? `Edit Invoice ${id.slice(-6)}` : 'Create New Invoice'}</h1>
-      
+    <motion.form
+      onSubmit={handleSubmit}
+      initial={{ opacity: 0, y: 15 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4 }}
+      className="max-w-5xl mx-auto space-y-8"
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <FileText className="text-indigo-600" size={30} />
+          <h1 className="text-3xl font-bold text-gray-800 dark:text-gray-100">
+            {isEditing ? 'Edit Invoice' : 'Create New Invoice'}
+          </h1>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => navigate('/invoices')}
+          className="text-sm"
+        >
+          Back
+        </Button>
+      </div>
+
       {/* Customer & Status */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-6 bg-white dark:bg-gray-800 rounded-lg shadow">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md">
         <div>
-          <label htmlFor="customer" className="block text-sm font-medium mb-1">Customer</label>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            Customer
+          </label>
           <select
-            id="customer"
             value={selectedCustomer}
-            onChange={(e) => setSelectedCustomer(e.target.value)}
-            className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm dark:bg-gray-700 dark:border-gray-600"
+            onChange={e => setSelectedCustomer(e.target.value)}
+            disabled={isEditing}
+            className="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
             required
-            disabled={isEditing} // Don't allow changing customer on an existing invoice
           >
-            <option value="" disabled>Select a customer</option>
+            <option value="" disabled>
+              Select a customer
+            </option>
             {customers.map(c => (
-              <option key={c._id} value={c._id}>{c.name}</option>
+              <option key={c._id} value={c._id}>
+                {c.name}
+              </option>
             ))}
           </select>
         </div>
         <div>
-          <label htmlFor="status" className="block text-sm font-medium mb-1">Status</label>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            Status
+          </label>
           <select
-            id="status"
             value={status}
-            onChange={(e) => setStatus(e.target.value)}
-            className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm dark:bg-gray-700 dark:border-gray-600"
+            onChange={e => setStatus(e.target.value)}
+            className="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
           >
             <option>Pending</option>
             <option>Paid</option>
@@ -140,82 +165,103 @@ function InvoiceForm() {
       </div>
 
       {/* Line Items */}
-      <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow">
-        <h2 className="text-xl font-semibold mb-4">Items</h2>
-        <div className="space-y-4">
-          {items.map((item, index) => (
-            <div key={index} className="grid grid-cols-12 gap-3 items-center">
-              <div className="col-span-5">
-                <select
-                  value={item.productId}
-                  onChange={(e) => handleItemChange(index, 'productId', e.target.value)}
-                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm dark:bg-gray-700 dark:border-gray-600"
-                  required
-                  disabled={isEditing}
-                >
-                  <option value="" disabled>Select a product</option>
-                  {products.map(p => (
-                    <option key={p._id} value={p._id}>{p.name}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="col-span-2">
-                <Input
-                  type="number"
-                  min="1"
-                  value={item.quantity}
-                  onChange={(e) => handleItemChange(index, 'quantity', e.target.value)}
-                  required
-                  disabled={isEditing}
-                />
-              </div>
-              <div className="col-span-2">
-                 <Input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={item.price}
-                  onChange={(e) => handleItemChange(index, 'price', e.target.value)}
-                  required
-                  disabled={isEditing} // Price is set from product
-                />
-              </div>
-              <div className="col-span-2 text-right">
-                <span className="font-medium">{formatCurrency(item.quantity * item.price)}</span>
-              </div>
-              <div className="col-span-1">
-                {items.length > 1 && !isEditing && (
-                  <Button type="button" variant="danger" onClick={() => removeItem(index)} className="px-2 py-1">
-                    X
-                  </Button>
-                )}
-              </div>
+      <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md">
+        <h2 className="text-xl font-semibold mb-4 text-gray-800 dark:text-gray-200">Items</h2>
+        {items.map((item, index) => (
+          <motion.div
+            key={index}
+            initial={{ opacity: 0, x: -10 }}
+            animate={{ opacity: 1, x: 0 }}
+            className="grid grid-cols-12 gap-4 mb-3 items-center"
+          >
+            <div className="col-span-5">
+              <select
+                value={item.productId}
+                onChange={e => handleItemChange(index, 'productId', e.target.value)}
+                disabled={isEditing}
+                className="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-indigo-500"
+                required
+              >
+                <option value="" disabled>
+                  Select product
+                </option>
+                {products.map(p => (
+                  <option key={p._id} value={p._id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
             </div>
-          ))}
-        </div>
+            <div className="col-span-2">
+              <Input
+                type="number"
+                min="1"
+                value={item.quantity}
+                onChange={e => handleItemChange(index, 'quantity', e.target.value)}
+                disabled={isEditing}
+                required
+              />
+            </div>
+            <div className="col-span-2">
+              <Input
+                type="number"
+                step="0.01"
+                min="0"
+                value={item.price}
+                onChange={e => handleItemChange(index, 'price', e.target.value)}
+                disabled={isEditing}
+                required
+              />
+            </div>
+            <div className="col-span-2 text-right text-gray-800 dark:text-gray-200 font-semibold">
+              {formatCurrency(item.quantity * item.price)}
+            </div>
+            <div className="col-span-1 text-center">
+              {!isEditing && items.length > 1 && (
+                <Button
+                  type="button"
+                  variant="danger"
+                  onClick={() => removeItem(index)}
+                  className="p-2"
+                >
+                  <Trash2 size={16} />
+                </Button>
+              )}
+            </div>
+          </motion.div>
+        ))}
         {!isEditing && (
-          <Button type="button" variant="secondary" onClick={addItem} className="mt-4">
-            + Add Item
+          <Button
+            type="button"
+            onClick={addItem}
+            variant="secondary"
+            className="mt-3 flex items-center gap-2"
+          >
+            <Plus size={16} /> Add Item
           </Button>
         )}
       </div>
 
-      {/* Total & Save */}
-      <div className="flex justify-between items-center p-6 bg-white dark:bg-gray-800 rounded-lg shadow">
-        <div>
-          <span className="text-lg">Total:</span>
-          <span className="text-2xl font-bold ml-2">{formatCurrency(calculateTotal())}</span>
+      {/* Total and Save */}
+      <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md flex justify-between items-center">
+        <div className="text-xl font-semibold text-gray-800 dark:text-gray-200">
+          Total: <span className="text-2xl ml-2 text-indigo-600">{formatCurrency(calculateTotal())}</span>
         </div>
-        <div className="flex gap-3">
-          <Button type="button" variant="outline" onClick={() => navigate('/invoices')}>
-            Cancel
-          </Button>
-          <Button type="submit">
-            {isEditing ? 'Save Changes' : 'Create Invoice'}
-          </Button>
-        </div>
+        <Button
+          type="submit"
+          disabled={saving}
+          className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-lg"
+        >
+          {saving ? (
+            <>
+              <Loader2 className="animate-spin" size={18} /> Saving...
+            </>
+          ) : (
+            isEditing ? 'Save Changes' : 'Create Invoice'
+          )}
+        </Button>
       </div>
-    </form>
+    </motion.form>
   );
 }
 
